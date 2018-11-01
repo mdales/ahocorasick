@@ -23,9 +23,6 @@ type node struct {
 	// be output when matching
 	index int // index into original dictionary if output is true
 
-	counter int // Set to the value of the Matcher.counter when a
-	// match is output to prevent duplicate output
-
 	// The use of fixed size arrays is space-inefficient but fast for
 	// lookups.
 
@@ -49,12 +46,16 @@ type node struct {
 // Matcher is returned by NewMatcher and contains a list of blices to
 // match against
 type Matcher struct {
-	counter int // Counts the number of matches done, and is used to
-	// prevent output of multiple matches of the same string
 	trie []node // preallocated block of memory containing all the
 	// nodes
 	extent int   // offset into trie that is currently free
 	root   *node // Points to trie[0]
+}
+
+// A single result
+type Hit struct {
+    Key int
+    Position int
 }
 
 // finndBlice looks for a blice in the trie starting from the root and
@@ -213,15 +214,13 @@ func NewStringMatcher(dictionary []string) *Matcher {
 	return m
 }
 
-// Match searches in for blices and returns all the blices found as
-// indexes into the original dictionary
-func (m *Matcher) Match(in []byte) []int {
-	m.counter += 1
-	var hits []int
+// Match searches in for blices and returns all the blices found
+func (m *Matcher) Match(in []byte) []Hit {
+	var hits []Hit
 
 	n := m.root
 
-	for _, b := range in {
+	for idx, b := range in {
 		c := int(b)
 
 		if !n.root && n.child[c] == nil {
@@ -232,24 +231,13 @@ func (m *Matcher) Match(in []byte) []int {
 			f := n.child[c]
 			n = f
 
-			if f.output && f.counter != m.counter {
-				hits = append(hits, f.index)
-				f.counter = m.counter
+			if f.output {
+				hits = append(hits, Hit{Position: idx - len(f.b) + 1, Key: f.index})
 			}
 
 			for !f.suffix.root {
 				f = f.suffix
-				if f.counter != m.counter {
-					hits = append(hits, f.index)
-					f.counter = m.counter
-				} else {
-
-					// There's no point working our way up the
-					// suffixes if it's been done before for this call
-					// to Match. The matches are already in hits.
-
-					break
-				}
+				hits = append(hits, Hit{Position: idx - len(f.b) + 1, Key: f.index})
 			}
 		}
 	}
